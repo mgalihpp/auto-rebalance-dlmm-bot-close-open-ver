@@ -31,6 +31,30 @@ Fill `.env`, then typecheck with `npm run check`.
   earlier close, then the tick continues on funded positions.
 - `tick failed: ...` never kills the loop. The bot sleeps and retries.
 
+## Telegram
+
+Opsional, tanpa dependency tambahan (pakai Bot API + long-polling).
+
+1. Chat ke `@BotFather` → `/newbot` → copy token ke `TELEGRAM_BOT_TOKEN`.
+2. Chat ke bot kamu → `/start`. Cari chat id via
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` atau `@userinfobot`,
+   isi ke `TELEGRAM_CHAT_ID` (boleh koma untuk banyak id).
+3. Restart bot. Harusnya dapat pesan `🤖 bot online`.
+
+Perintah di Telegram (atau tombol inline):
+
+- `/status` — RUNNING/PAUSED, active bin, daftar posisi funded.
+- `/position` — detail semua posisi (address, range, x/y).
+- `/pause` — pause: tick dilewati (`Hold: paused`), tidak ada tx, tidak ada RPC refetch.
+- `/resume` — lanjutkan rebalance.
+- `/tick` — paksa 1 tick sekarang (ditolak kalau paused).
+- `/help` — bantuan.
+
+Notifikasi otomatis ke semua chat terdaftar: bot online, tiap `Rebalance`
+(plus open range + address yang di-close), dan tiap `tick failed`.
+Isi `TELEGRAM_NOTIFY_HOLD=true` kalau mau tiap `Hold` juga dikirim (spammy).
+Tanpa `TELEGRAM_CHAT_ID`, siapa pun yang `/start` akan terdaftar — isi untuk privat.
+
 ## Limits
 
 - Rebalance reuses withdrawn capital (`src/position.ts`). Close withdraws

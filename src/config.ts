@@ -62,6 +62,9 @@ export class BotConfig {
     readonly commitment: Commitment,
     readonly jupiterApiKey: string | null,
     readonly swapEnabled: boolean,
+    readonly telegramBotToken: string | null,
+    readonly telegramChatIds: readonly string[],
+    readonly telegramNotifyHold: boolean,
   ) {}
 
   static loadFromEnv(): Effect.Effect<BotConfig, ConfigError> {
@@ -129,11 +132,23 @@ export class BotConfig {
       const swapEnabled = optional("SWAP_ENABLED", "true").toLowerCase() !== "false";
 
       const commitmentRaw = optional("COMMITMENT", "confirmed");
-      if (commitmentRaw !== "confirmed" && commitmentRaw !== "finalized" && commitmentRaw !== "processed") {
+      if (
+        commitmentRaw !== "confirmed" &&
+        commitmentRaw !== "finalized" &&
+        commitmentRaw !== "processed"
+      ) {
         return yield* Effect.fail(
           new ConfigError({ reason: "COMMITMENT must be confirmed, finalized, or processed" }),
         );
       }
+
+      const telegramRaw = optional("TELEGRAM_BOT_TOKEN", "").trim();
+      const telegramBotToken = telegramRaw === "" ? null : telegramRaw;
+      const telegramChatIds = optional("TELEGRAM_CHAT_ID", "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== "");
+      const telegramNotifyHold = optional("TELEGRAM_NOTIFY_HOLD", "false").toLowerCase() === "true";
 
       return new BotConfig(
         poolRaw.trim(),
@@ -148,6 +163,9 @@ export class BotConfig {
         commitmentRaw,
         jupiterApiKey,
         swapEnabled,
+        telegramBotToken,
+        telegramChatIds,
+        telegramNotifyHold,
       );
     });
   }

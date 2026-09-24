@@ -7,16 +7,42 @@ import type { SolanaClient } from "./solana.js";
 import type { PositionSummary, RebalanceDecision } from "./types.js";
 import { sumFunds } from "./types.js";
 
+export class BotState {
+  private paused = false;
+
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+}
+
+export interface BotLoopOptions {
+  readonly notify?: (msg: string) => Effect.Effect<void, never, never>;
+  readonly notifyHold?: boolean;
+}
+
 export class RebalanceBot {
   constructor(
     readonly cfg: BotConfig,
     readonly solana: SolanaClient,
     readonly poolClient: DlmmPoolClient,
     readonly positions: PositionManager,
+    readonly state: BotState = new BotState(),
   ) {}
 
   tickOnce(): Effect.Effect<RebalanceDecision, DlmmError | TxError | RpcError | JupiterError | ConfigError> {
     return Effect.gen(this, function* () {
+      if (this.state.isPaused) {
+        yield* Effect.log("tick skipped: bot paused");
+        return { kind: "Hold", reason: "paused, skipping tick" } as const;
+      }
       yield* this.poolClient.refetch();
       const activeBinId = yield* this.poolClient.getActiveBinId();
       const summaries = yield* this.poolClient.getUserPositions(this.solana.owner);
@@ -60,12 +86,29 @@ export class RebalanceBot {
     });
   }
 
-  start(): Effect.Effect<never, never, never> {
-    return Effect.forever(
-      this.tickOnce().pipe(
-        Effect.catchAll((cause) => Effect.logError(`tick failed: ${cause}`)),
-        Effect.andThen(Effect.sleep(`${this.cfg.pollIntervalMs} millis`)),
+  start(opts: BotLoopOptions = {}): Effect.Effect<never, never, never> {
+    const notify = opts.notify;
+    const notifyHold = opts.notifyHold ?? false;
+    const guarded = this.tickOnce().pipe(
+      Effect.tap((decision) => {
+        if (!notify) return Effect.void;
+        if (decision.kind === "Rebalance") {
+          return notify(
+            `🔄 Rebalance: ${decision.reason}\nclose: ${decision.close.join(", ") || "-"}\nopen: [${decision.openRange.minBinId}, ${decision.openRange.maxBinId}]`,
+          );
+        }
+        if (notifyHold) return notify(`Hold: ${decision.reason}`);
+        return Effect.void;
+      }),
+      Effect.catchAll((cause) =>
+        Effect.zipRight(
+          Effect.logError(`tick failed: ${cause}`),
+          notify
+            ? notify(`⚠️ tick failed: ${String(cause)}`).pipe(Effect.catchAll(() => Effect.void))
+            : Effect.void,
+        ),
       ),
     );
+    return Effect.forever(guarded.pipe(Effect.andThen(Effect.sleep(`${this.cfg.pollIntervalMs} millis`))));
   }
 }
